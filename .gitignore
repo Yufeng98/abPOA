@@ -4,11 +4,15 @@
 *.obj
 *.elf
 .idea/*
+build/*
 
 # dot
 abpoa.dot
 abpoa.dot.pdf
 
+
+# readme
+README.html
 
 # Precompiled Headers
 *.gch
@@ -31,6 +35,7 @@ lib/*
 # Executables
 bin/*
 example
+sub_example
 *.exe
 *.out
 *.app
@@ -44,6 +49,7 @@ example
 
 #data
 data/*
+test_data/cons.fa
 *.dot
 *.png
 *.pdf

@@ -8,12 +8,17 @@
 [![Build Status](https://img.shields.io/travis/yangao07/abPOA/master.svg?label=Master)](https://travis-ci.org/yangao07/abPOA)
 [![License](https://img.shields.io/badge/License-MIT-black.svg)](https://github.com/yangao07/abPOA/blob/master/LICENSE)
 <!-- [![PyPI](https://img.shields.io/pypi/v/pyabpoa.svg?style=flat)](https://pypi.python.org/pypi/pyabpoa) -->
+## Updates (v1.0.4)
+
+- Added read ID as head in MSA output: `-A`
+- Added GFA output: `-r3`/`-r4`
+- Added ambiguous strand mode: `-s`
 
 ## Getting started
 Download the [latest release](https://github.com/yangao07/abPOA/releases):
 ```
-wget https://github.com/yangao07/abPOA/releases/download/v1.0.3/abPOA-v1.0.3.tar.gz
-tar -zxvf abPOA-v1.0.3.tar.gz && cd abPOA-v1.0.3
+wget https://github.com/yangao07/abPOA/releases/download/v1.0.4/abPOA-v1.0.4.tar.gz
+tar -zxvf abPOA-v1.0.4.tar.gz && cd abPOA-v1.0.4
 ```
 Make from source and run with test data:
 ```
@@ -34,12 +39,14 @@ abpoa ./test_data/seq.fa > cons.fa
 - [General usage](#usage)
   - [To generate consensus sequence](#gen_cons)
   - [To generate row-column multiple sequence alignment](#gen_msa)
+  - [To generate graph information in GFA format](#gen_gfa)
   - [To generate a plot of the alignment graph](#gen_plot)
 - [Commands and options](#cmd)
 - [Input](#input)
 - [Output](#output)
   - [Consensus sequence](#cons)
   - [Row-column multiple sequence alignment](#msa)
+  - [Full graph information](#gfa)
   - [Plot of alignment graph](#plot)
 - [For development](#dev)
 - [Contact](#contact)
@@ -73,9 +80,9 @@ You can also build abPOA from source files.
 Make sure you have gcc (>=6.4.0) and zlib installed before compiling.
 It is recommended to download the [latest release](https://github.com/yangao07/abPOA/releases).
 ```
-wget https://github.com/yangao07/abPOA/releases/download/v1.0.3/abPOA-v1.0.3.tar.gz
-tar -zxvf abPOA-v1.0.3.tar.gz
-cd abPOA-v1.0.3; make
+wget https://github.com/yangao07/abPOA/releases/download/v1.0.4/abPOA-v1.0.4.tar.gz
+tar -zxvf abPOA-v1.0.4.tar.gz
+cd abPOA-v1.0.4; make
 ```
 Or, you can use `git clone` command to download the source code.
 This gives you the latest version of abPOA, which might be still under development.
@@ -87,8 +94,8 @@ cd abPOA; make
 ### <a name="binary"></a>Pre-built binary executable file for Linux/Unix 
 If you meet any compiling issue, please try the pre-built binary file:
 ```
-wget https://github.com/yangao07/abPOA/releases/download/v1.0.3/abPOA-v1.0.3_x64-linux.tar.gz
-tar -zxvf abPOA-v1.0.3_x64-linux.tar.gz
+wget https://github.com/yangao07/abPOA/releases/download/v1.0.4/abPOA-v1.0.4_x64-linux.tar.gz
+tar -zxvf abPOA-v1.0.4_x64-linux.tar.gz
 ```
 
 ## <a name="usage"></a>General usage
@@ -104,6 +111,16 @@ abpoa seq.fa > cons.fa
 abpoa seq.fa -r2 > cons.out
 ```
 
+### <a name="gen_gfa"></a>To generate graph information in [GFA](https://github.com/GFA-spec/GFA-spec/blob/master/GFA1.md) format
+
+```
+abpoa seq.fa -r3 > abpoa.gfa
+```
+To include the generated consensus sequence as a path in the GFA file:
+```
+abpoa seq.fa -r4 > abpoa.gfa
+```
+
 ### <a name="gen_plot"></a>To generate a plot of the alignment graph
 
 ```
@@ -113,7 +130,7 @@ See [Plot of alignment graph](#plot) for more details about the plot file.
 
 ## <a name="cmd"></a>Commands and options
 ```
-Usage: abpoa [options] <in.fa/fq> > cons.fa/msa.out
+Usage: abpoa [options] <in.fa/fq> > cons.fa/msa.out/abpoa.gfa
 
 Options:
   Alignment:
@@ -127,6 +144,9 @@ Options:
                             - convex (default): min{O1+g*E1, O2+g*E2}
                             - affine (set O2 as 0): O1+g*E1
                             - linear (set O1 as 0): g*E1
+    -s --amb-strand         ambiguous strand mode [False]
+                            for each input sequence, try the reverse complement if the current
+                            alignment score is too low, and pick the strand with a higher score
   Adaptive banded DP:
     -b --extra-b  INT       first adaptive banding parameter [10]
                             set b as < 0 to disable adaptive banded DP
@@ -142,12 +162,13 @@ Options:
                             - 0: consensus (FASTA format)
                             - 1: MSA (PIR format)
                             - 2: both 0 & 1
+                            - 3: graph (GFA format)
+                            - 4: graph with consensus path (GFA format)
     -A --msa-header         add read ID as header of each sequence in MSA output [False]
     -g --out-pog  FILE      dump final alignment graph to FILE (.pdf/.png) [Null]
 
     -h --help               print this help usage information
     -v --version            show version number
-
 ```
 
 ## <a name="input"></a>Input
@@ -169,7 +190,7 @@ For example:
 ACGTGTACACGTTGAC
 ```
 ### <a name="msa"></a>Row-column multiple sequence alignment
-abPOA cano also output the row-column multiple sequence alignment (RC-MSA) of all the aligned sequences in PIR format
+abPOA can also output the row-column multiple sequence alignment (RC-MSA) of all the aligned sequences in PIR format
 with an additional FASTA header `>Multiple_sequence_alignment`. For example:
 ```
 >Multiple_sequence_alignment
@@ -179,6 +200,16 @@ A-GTGT-CACGTTGAC
 ACGTGTACA--TTGAC
 ```
 The `-` in the sequence stands for alignment gap. 
+
+### <a name="gfa"></a>Full graph information
+abPOA can output the final alignment graph in GFA format.
+Each segment line (`S` line) represents one node and each link line (`L` line) represents one edge between two nodes.
+The original input sequences and the generated consensus sequence are described as paths in `P` lines.
+
+abPOA outputs two graph-related numbers in the header line (`H` line):
+`NS` and `NL`, which denote the total number of nodes and edges in the GFA file, respectively.
+
+Please refer to the [GFA specification](https://github.com/GFA-spec/GFA-spec/blob/master/GFA1.md) for more details of the GFA format.
 
 ### <a name="plot"></a>Plot of alignment graph
 

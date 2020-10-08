@@ -7,6 +7,7 @@
 #include <stdint.h>
 #include <sys/time.h>
 #include <time.h>
+#include <sys/resource.h>
 #include <getopt.h>
 #include "abpoa.h"
 
@@ -30,6 +31,25 @@ unsigned char nst_nt4_table[256] = {
 	4, 4, 4, 4,  4, 4, 4, 4,  4, 4, 4, 4,  4, 4, 4, 4, 
 	4, 4, 4, 4,  4, 4, 4, 4,  4, 4, 4, 4,  4, 4, 4, 4
 };
+
+double get_realtime()
+{
+	struct timeval tp;
+	struct timezone tzp;
+	gettimeofday(&tp, &tzp);
+	return tp.tv_sec*1e6 + tp.tv_usec;
+}
+
+long get_peakrss(void)
+{
+	struct rusage r;
+	getrusage(RUSAGE_SELF, &r);
+#ifdef __linux__
+	return r.ru_maxrss * 1024;
+#else
+	return r.ru_maxrss;
+#endif
+}
 
 char *get_seq_for_racon(FILE *fp, int *start) {
     char c = fgetc(fp);
@@ -84,6 +104,9 @@ void help() {
         "        -b <int>\n"
         "            default: 10\n"
         "            1st part of extra-band-width, set as negative to disable adaptive banded DP\n"
+        "        -f <float>\n"
+        "            default: 0.01\n"
+        "            2nd part of extra-band-width.\n"
         "        -m <int>\n"
         "            default: 2\n"
         "            score for matching bases\n"
@@ -117,7 +140,7 @@ int main (int argc, char * const argv[]) {
     int n_seqs = 0, *seq_lens; uint8_t **bseqs;
     char opt; char *s;
     int for_racon = 0;
-    while ((opt = getopt(argc, argv, "l:m:x:o:e:s:n:rhb:")) != -1) {
+    while ((opt = getopt(argc, argv, "l:m:x:o:e:s:n:rhb:f:")) != -1) {
         switch (opt) {
             case 'l': abpt->align_mode = atoi(optarg); break;
             case 'm': abpt->match = atoi(optarg); break;
@@ -128,6 +151,7 @@ int main (int argc, char * const argv[]) {
             case 'n': n_seqs = atoi(optarg); break;
             case 'r': for_racon = 1; break;
             case 'b': abpt->wb = atoi(optarg); break;
+            case 'f': abpt->wf = atof(optarg); break;
             case 'h': help(); return 0;
             default: help(); return 1;
         }
@@ -147,6 +171,7 @@ int main (int argc, char * const argv[]) {
 
     struct timeval start_time, end_time;
     double runtime = 0; int i; char *seq;
+    double realtime = 0, real_start, real_end;
     abpoa_t *ab = abpoa_init();
     if (for_racon) {
         n_seqs = 10000;
@@ -169,10 +194,11 @@ int main (int argc, char * const argv[]) {
             else {
                 // do msa
                 // printf("%d\n", seq_i);
-                gettimeofday(&start_time, NULL);
-                abpoa_msa(ab, abpt, seq_i, seq_lens, bseqs, stdout, NULL, NULL, NULL, NULL, NULL);
-                gettimeofday(&end_time, NULL);
-                runtime = runtime + (end_time.tv_sec - start_time.tv_sec) + (end_time.tv_usec - start_time.tv_usec) * 1e-6;
+                gettimeofday(&start_time, NULL); real_start = get_realtime();
+                abpoa_msa(ab, abpt, seq_i, NULL, seq_lens, bseqs, stdout, NULL, NULL, NULL, NULL, NULL, NULL);
+                gettimeofday(&end_time, NULL); real_end = get_realtime();
+                runtime = runtime + (end_time.tv_sec - start_time.tv_sec)*1e6 + end_time.tv_usec - start_time.tv_usec;
+                realtime += (real_end - real_start);
 
                 if (seq_i > 0) {
                     for (i = 0; i < seq_i; ++i) free(bseqs[i]); 
@@ -209,10 +235,11 @@ int main (int argc, char * const argv[]) {
             }
             if (seq_i == 0) break;
 
-            gettimeofday(&start_time, NULL);
-            abpoa_msa(ab, abpt, n_seqs, seq_lens, bseqs, stdout, NULL, NULL, NULL, NULL, NULL);
-            gettimeofday(&end_time, NULL);
-            runtime = runtime + (end_time.tv_sec - start_time.tv_sec) + (end_time.tv_usec - start_time.tv_usec) * 1e-6;
+            gettimeofday(&start_time, NULL); real_start = get_realtime();
+            abpoa_msa(ab, abpt, n_seqs, NULL, seq_lens, bseqs, stdout, NULL, NULL, NULL, NULL, NULL, NULL);
+            gettimeofday(&end_time, NULL); real_end = get_realtime();
+            runtime = runtime + (end_time.tv_sec - start_time.tv_sec)*1e6 + end_time.tv_usec - start_time.tv_usec;
+            realtime += (real_end - real_start);
 
             if (n_seqs > 0) {
                 for (i = 0; i < n_seqs; ++i) free(bseqs[i]); 
@@ -221,9 +248,9 @@ int main (int argc, char * const argv[]) {
             if(feof(fp_seq)) break;
         }
     }
-    abpoa_free(ab, abpt);
-    fprintf(stderr, "%.2f ", runtime);
+    fprintf(stderr, "%.2f %.2f %.3f %.3f ", runtime*1e-6, realtime*1e-6, ab->abg->cal_R_time*1e-6, get_peakrss()/ 1024.0/1024.0);
 
+    abpoa_free(ab, abpt);
     free(seq_lens); free(bseqs);
     abpoa_free_para(abpt); fclose(fp_seq);
     return 0;

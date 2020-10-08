@@ -1,7 +1,8 @@
-/* example.c libabpoa usage example */
-/* To compile: */
-/*     gcc -O2 example.c -I ./include -L ./lib -labpoa -lz -o example */
-/* Or: gcc -O2 example.c -I ./include ./lib/libabpoa.a -lz -o example */
+/* example.c libabpoa usage example
+   To compile: 
+       gcc -O2 example.c -I ./include -L ./lib -labpoa -lz -o example
+   Or: gcc -O2 example.c -I ./include ./lib/libabpoa.a -lz -o example
+*/
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -80,16 +81,16 @@ int main(void) {
     fprintf(stdout, "=== output to stdout ===\n");
 
     // perform abpoa-msa
-    abpoa_msa(ab, abpt, n_seqs, seq_lens, bseqs, stdout, NULL, NULL, NULL, NULL, NULL);
+    abpoa_msa(ab, abpt, n_seqs, NULL, seq_lens, bseqs, stdout, NULL, NULL, NULL, NULL, NULL, NULL);
 
     abpoa_reset_graph(ab, abpt, seq_lens[0]); // reset graph before re-use
 
     // variables to store result
-    uint8_t **cons_seq; int *cons_l, cons_n=0;
+    uint8_t **cons_seq; int **cons_cov, *cons_l, cons_n=0;
     uint8_t **msa_seq; int msa_l=0;
 
     // perform abpoa-msa
-    abpoa_msa(ab, abpt, n_seqs, seq_lens, bseqs, NULL, &cons_seq, &cons_l, &cons_n, &msa_seq, &msa_l);
+    abpoa_msa(ab, abpt, n_seqs, NULL, seq_lens, bseqs, NULL, &cons_seq, &cons_cov, &cons_l, &cons_n, &msa_seq, &msa_l);
 
     fprintf(stdout, "=== output to variables ===\n");
     for (i = 0; i < cons_n; ++i) {
@@ -107,8 +108,9 @@ int main(void) {
     }
 
     if (cons_n) {
-        for (i = 0; i < cons_n; ++i) free(cons_seq[i]); 
-        free(cons_seq); free(cons_l);
+        for (i = 0; i < cons_n; ++i) {
+            free(cons_seq[i]); free(cons_cov[i]);
+        } free(cons_seq); free(cons_cov); free(cons_l);
     }
     if (msa_l) {
         for (i = 0; i < n_seqs; ++i) free(msa_seq[i]); free(msa_seq);

@@ -33,9 +33,11 @@ abpoa_para_t *abpoa_init_para(void) {
     abpt->wb = ABPOA_EXTRA_B; // extra bandwidth
     abpt->wf = ABPOA_EXTRA_F; // extra bandwidth
 
+    abpt->amb_strand = 0; // ambiguous strand
     abpt->ret_cigar = 1;  // return cigar
     abpt->rev_cigar = 0;  // reverse cigar
     abpt->out_cons = 1;   // output consensus sequence in msa
+    abpt->out_gfa = 0;    // out graph in GFA format
     abpt->out_msa = 0;    // output msa
     abpt->out_msa_header = 0; // output read ID in msa output
     abpt->is_diploid = 0; // diploid data
@@ -64,18 +66,27 @@ abpoa_para_t *abpoa_init_para(void) {
 void abpoa_post_set_para(abpoa_para_t *abpt) {
     gen_simple_mat(abpt->m, abpt->mat, abpt->match, abpt->mismatch);
     abpoa_set_gap_mode(abpt);
-    if (abpt->cons_agrm == ABPOA_HC || abpt->out_msa || abpt->is_diploid) {
+    if (abpt->cons_agrm == ABPOA_HC || abpt->out_msa || abpt->out_gfa || abpt->is_diploid) {
         abpt->use_read_ids = 1;
-        set_65536_table();
-        if (abpt->cons_agrm == ABPOA_HC || abpt->is_diploid) set_bit_table16();
+        set_65536_table(abpt);
+        if (abpt->cons_agrm == ABPOA_HC || abpt->is_diploid) set_bit_table16(abpt);
     }
     if (abpt->align_mode == ABPOA_LOCAL_MODE) abpt->wb = -1;
 }
 
 void abpoa_free_para(abpoa_para_t *abpt) {
     if (abpt->mat != NULL) free(abpt->mat);
-    // if (abpt->out_pog != NULL) free(abpt->out_pog);
+    if (abpt->out_pog != NULL) free(abpt->out_pog);
     free(abpt);
+}
+
+int abpoa_align_sequence_to_subgraph(abpoa_t *ab, abpoa_para_t *abpt, int inc_beg_node_id, int inc_end_node_id, uint8_t *query, int qlen, abpoa_res_t *res) {
+    if (ab->abg->node_n <= 2 || qlen <= 0) return -1;
+    if (ab->abg->is_topological_sorted == 0) abpoa_topological_sort(ab->abg, abpt);
+    int exc_beg_node_id, exc_end_node_id;
+    abpoa_subgraph_nodes(ab, inc_beg_node_id, inc_end_node_id, &exc_beg_node_id, &exc_end_node_id);
+    simd_abpoa_align_sequence_to_subgraph(ab, abpt, exc_beg_node_id, exc_end_node_id, query, qlen, res);
+    return 0;
 }
 
 int abpoa_align_sequence_to_graph(abpoa_t *ab, abpoa_para_t *abpt, uint8_t *query, int qlen, abpoa_res_t *res) {
@@ -94,24 +105,32 @@ int abpoa_align_sequence_to_graph(abpoa_t *ab, abpoa_para_t *abpt, uint8_t *quer
 //    seq_n: number of input sequences
 //    seq_len: array of input sequence length, size: seq_n
 //    seqs: array of input sequences, 0123 for ACGT, size: seq_n * seq_len[]
-int abpoa_msa(abpoa_t *ab, abpoa_para_t *abpt, int n_seqs, int *seq_lens, uint8_t **seqs, FILE *out_fp, uint8_t ***cons_seq, int **cons_l, int *cons_n, uint8_t ***msa_seq, int *msa_l) {
-    if ((!abpt->out_msa && !abpt->out_cons) || n_seqs <= 0) return 0;
+int abpoa_msa(abpoa_t *ab, abpoa_para_t *abpt, int n_seqs, char **seq_names, int *seq_lens, uint8_t **seqs, FILE *out_fp, uint8_t ***cons_seq, int ***cons_cov, int **cons_l, int *cons_n, uint8_t ***msa_seq, int *msa_l) {
+    if ((!abpt->out_msa && !abpt->out_cons && !abpt->out_gfa) || n_seqs <= 0) return 0;
     int i, tot_n = n_seqs;
+    uint8_t *is_rc = (uint8_t*)_err_malloc(n_seqs * sizeof(uint8_t));
     abpoa_reset_graph(ab, abpt, seq_lens[0]);
-    abpoa_res_t res;
     for (i = 0; i < n_seqs; ++i) {
-        res.graph_cigar = 0, res.n_cigar = 0;
+        abpoa_res_t res;
+        res.graph_cigar = 0, res.n_cigar = 0, res.is_rc = 0;
         abpoa_align_sequence_to_graph(ab, abpt, seqs[i], seq_lens[i], &res);
-        abpoa_add_graph_alignment(ab, abpt, seqs[i], seq_lens[i], res.n_cigar, res.graph_cigar, i, n_seqs);
+        abpoa_add_graph_alignment(ab, abpt, seqs[i], seq_lens[i], res, i, n_seqs);
+        is_rc[i] = res.is_rc;
         if (res.n_cigar) free(res.graph_cigar);
     }
-    if (abpt->out_cons) {
-        abpoa_generate_consensus(ab, abpt, tot_n, out_fp, cons_seq, cons_l, cons_n);
-        if (ab->abg->is_called_cons == 0)
-            err_printf("Warning: no consensus sequence generated.\n");
+    if (abpt->out_gfa) {
+        abpoa_generate_gfa(ab, abpt, seq_names, is_rc, n_seqs, out_fp);
+    } else {
+        if (abpt->out_cons) {
+            if (abpt->out_msa) abpoa_generate_consensus(ab, abpt, tot_n, NULL, cons_seq, cons_cov, cons_l, cons_n);
+            else abpoa_generate_consensus(ab, abpt, tot_n, out_fp, cons_seq, cons_cov, cons_l, cons_n);
+            if (ab->abg->is_called_cons == 0)
+                err_printf("Warning: no consensus sequence generated.\n");
+        }
+        if (abpt->out_msa) {
+            abpoa_generate_rc_msa(ab, abpt, seq_names, is_rc, tot_n, out_fp, msa_seq, msa_l);
+        }
     }
-    if (abpt->out_msa) {
-        abpoa_generate_rc_msa(ab, NULL, tot_n, out_fp, msa_seq, msa_l);
-    }
+    free(is_rc);
     return 1;
 }
