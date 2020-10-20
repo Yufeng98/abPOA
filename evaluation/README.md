@@ -17,6 +17,7 @@ make # make spoa library
 ```
 Then, build two wrap-up programs:
 ```
+scl enable devtoolset-8 bash
 cd ../abPOA/evaluation
 gcc -O3 msa_abPOA.c -I ../include -L ../lib -labpoa -lz -o msa_abPOA
 g++ -O3 msa_spoa.cpp -I ../../spoa/include/ -L ../../spoa/build/lib/ -lspoa -o msa_spoa
